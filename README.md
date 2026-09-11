@@ -1,6 +1,6 @@
 # MINE — modelagem e análise de dados para um varejo de moda omnichannel
 
-> **Case de estudo de um projeto real.** O repositório original é **privado por preferência do cliente**. Este aqui traz o **schema de produção** (as 16 migrations PostgreSQL, sem credenciais nem identificadores), trechos da camada de consulta do app e uma **camada analítica com 13 análises SQL** que rodam sobre uma base **100% sintética**. Nenhum dado real de cliente, venda ou produto aparece neste repositório.
+> **Case de estudo de um projeto real.** O repositório original é **privado por preferência do cliente**. Este aqui traz o **schema de produção** (as 17 migrations PostgreSQL, sem credenciais nem identificadores), trechos da camada de consulta do app e uma **camada analítica com 13 análises SQL** que rodam sobre uma base **100% sintética**. Nenhum dado real de cliente, venda ou produto aparece neste repositório.
 
 **Stack:** PostgreSQL (Supabase) · PL/pgSQL · SQL analítico · TypeScript / Next.js · PGlite para rodar tudo localmente
 
@@ -35,7 +35,7 @@ npm run tudo
 O script [`scripts/rodar_tudo.mjs`](scripts/rodar_tudo.mjs):
 
 1. sobe um **PostgreSQL 17 em memória** ([PGlite](https://pglite.dev));
-2. aplica um *shim* mínimo do Supabase ([`sql/local/00_supabase_shim.sql`](sql/local/00_supabase_shim.sql)) e as **16 migrations de produção sem alteração de lógica**;
+2. aplica um *shim* mínimo do Supabase ([`sql/local/00_supabase_shim.sql`](sql/local/00_supabase_shim.sql)) e as **17 migrations de produção sem alteração de lógica**;
 3. gera **12 meses de operação sintética** com SQL puro ([`sql/seed/seed_sintetico.sql`](sql/seed/seed_sintetico.sql)): cerca de 6.800 vendas, 2.500 clientes e 9.700 movimentos de estoque;
 4. roda todas as análises e escreve os resultados em [`docs/resultados.md`](docs/resultados.md).
 
@@ -207,7 +207,7 @@ Todos os resultados: **[docs/resultados.md](docs/resultados.md)** · Leitura de 
 
 ```
 ├── sql/
-│   ├── schema/        16 migrations de produção (higienizadas), em ordem de aplicação
+│   ├── schema/        17 migrations de produção (higienizadas), em ordem de aplicação
 │   ├── seed/          gerador de 12 meses de dados sintéticos (SQL puro, reprodutível)
 │   ├── analytics/     views unificadas + 13 análises
 │   └── local/         shim do Supabase para rodar em Postgres puro

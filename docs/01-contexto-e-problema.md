@@ -24,7 +24,7 @@ Resultado: a dona não conseguia responder perguntas básicas como *"quanto eu v
 
 ## O que eu construí
 
-Redesenhei o banco de dados (PostgreSQL no Supabase) para ser a **fonte única de verdade da operação**, e a partir dele um painel de gestão. Em 16 migrations incrementais, sem nunca parar o site:
+Redesenhei o banco de dados (PostgreSQL no Supabase) para ser a **fonte única de verdade da operação**, e a partir dele um painel de gestão. Em 17 migrations incrementais, sem nunca parar o site:
 
 1. **Catálogo normalizado:** produto → variante (cor × tamanho) como unidade real de estoque, com preço em centavos.
 2. **Estoque como livro-razão (ledger):** todo movimento é uma linha, o saldo é consequência, e existe reserva anti-oversell entre os canais.
