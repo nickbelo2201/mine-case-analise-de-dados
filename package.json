@@ -1,0 +1,12 @@
+{
+  "name": "mine-case-dados",
+  "private": true,
+  "type": "module",
+  "description": "Case de modelagem e análise de dados em PostgreSQL — varejo de moda omnichannel",
+  "scripts": {
+    "tudo": "node scripts/rodar_tudo.mjs"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "0.5.8"
+  }
+}
