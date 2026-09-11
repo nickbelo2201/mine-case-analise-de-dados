@@ -225,4 +225,4 @@ Todos os resultados: **[docs/resultados.md](docs/resultados.md)** · Leitura de 
 
 ---
 
-**Nicholas Belo** · Análise de Dados · [LinkedIn](https://www.linkedin.com/in/SEU-USUARIO) · [GitHub](https://github.com/nickbelo2201)
+**Nicholas Belo** · Análise de Dados · [LinkedIn](https://www.linkedin.com/in/nicholas-belo-aa8876293/) · [GitHub](https://github.com/nickbelo2201)
