@@ -1,5 +1,7 @@
 # MINE — modelagem e análise de dados para um varejo de moda omnichannel
 
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-336791?logo=postgresql&logoColor=white) ![SQL](https://img.shields.io/badge/SQL-anal%C3%ADtico-informational) ![Supabase](https://img.shields.io/badge/Supabase-RLS-3ECF8E?logo=supabase&logoColor=white)
+
 > **Case de estudo de um projeto real.** O repositório original é **privado por preferência do cliente**. Este aqui traz o **schema de produção** (as 17 migrations PostgreSQL, sem credenciais nem identificadores), trechos da camada de consulta do app e uma **camada analítica com 13 análises SQL** que rodam sobre uma base **100% sintética**. Nenhum dado real de cliente, venda ou produto aparece neste repositório.
 
 **Stack:** PostgreSQL (Supabase) · PL/pgSQL · SQL analítico · TypeScript / Next.js · PGlite para rodar tudo localmente
