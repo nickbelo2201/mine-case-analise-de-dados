@@ -1,25 +1,25 @@
 -- Pergunta: o online está perdendo pedidos? Quanto tempo a cliente espera pela peça?
 -- Técnicas: pivot de eventos (order_events) com MIN() FILTER, mediana com
 -- percentile_cont — média de prazo esconde os atrasos longos.
-with eventos as (
-  select order_id,
-         min(created_at) filter (where to_status = 'aguardando') as criado_em,
-         min(created_at) filter (where to_status = 'entregue')   as entregue_em
-    from order_events
-   group by order_id
+WITH eventos AS (
+  SELECT order_id,
+         MIN(created_at) FILTER (WHERE to_status = 'aguardando') AS criado_em,
+         MIN(created_at) FILTER (WHERE to_status = 'entregue')   AS entregue_em
+    FROM order_events
+   GROUP BY order_id
 )
-select to_char(date_trunc('month', o.created_at), 'YYYY-MM')                      as mes,
-       count(*)                                                                   as pedidos,
-       round(100.0 * count(*) filter (where o.status = 'cancelado') / count(*), 1) as cancelado_pct,
-       round(100.0 * count(*) filter (where o.status = 'devolvido') / count(*), 1) as devolvido_pct,
-       round((percentile_cont(0.5) within group (
-                order by extract(epoch from e.entregue_em - e.criado_em) / 86400))::numeric, 1)
-                                                                                  as lead_time_mediano_dias,
-       round((percentile_cont(0.9) within group (
-                order by extract(epoch from e.entregue_em - e.criado_em) / 86400))::numeric, 1)
-                                                                                  as lead_time_p90_dias
-  from orders o
-  left join eventos e on e.order_id = o.id
- where o.channel in ('site', 'whatsapp')
- group by 1
- order by 1;
+SELECT TO_CHAR(DATE_TRUNC('month', o.created_at), 'YYYY-MM')                      AS mes,
+       COUNT(*)                                                                   AS pedidos,
+       ROUND(100.0 * COUNT(*) FILTER (WHERE o.status = 'cancelado') / COUNT(*), 1) AS cancelado_pct,
+       ROUND(100.0 * COUNT(*) FILTER (WHERE o.status = 'devolvido') / COUNT(*), 1) AS devolvido_pct,
+       ROUND((PERCENTILE_CONT(0.5) WITHIN GROUP (
+                ORDER BY EXTRACT(EPOCH FROM e.entregue_em - e.criado_em) / 86400))::NUMERIC, 1)
+                                                                                  AS lead_time_mediano_dias,
+       ROUND((PERCENTILE_CONT(0.9) WITHIN GROUP (
+                ORDER BY EXTRACT(EPOCH FROM e.entregue_em - e.criado_em) / 86400))::NUMERIC, 1)
+                                                                                  AS lead_time_p90_dias
+  FROM orders o
+  LEFT JOIN eventos e ON e.order_id = o.id
+ WHERE o.channel IN ('site', 'whatsapp')
+ GROUP BY 1
+ ORDER BY 1;

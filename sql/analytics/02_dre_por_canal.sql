@@ -1,17 +1,17 @@
 -- Pergunta: qual canal dá mais dinheiro de verdade, depois de desconto, custo e taxa?
 -- Técnicas: ROLLUP para subtotal, custo congelado no item (snapshot), taxa de maquininha.
 -- É a mesma separação que o financeiro do app faz entre "vendi" e "recebo de verdade".
-select coalesce(canal, 'TOTAL')                                        as canal,
-       count(*)                                                        as vendas,
-       round(sum(subtotal_cents) / 100.0, 2)                           as receita_bruta_rs,
-       round(sum(discount_cents) / 100.0, 2)                           as descontos_rs,
-       round(sum(shipping_cents) / 100.0, 2)                           as frete_rs,
-       round(sum(total_cents) / 100.0, 2)                              as receita_liquida_rs,
-       round(sum(cost_cents) / 100.0, 2)                               as cmv_rs,
-       round(sum(fee_cents) / 100.0, 2)                                as taxas_rs,
-       round((sum(total_cents) - sum(cost_cents) - sum(fee_cents)) / 100.0, 2) as margem_contrib_rs,
-       round(100.0 * (sum(total_cents) - sum(cost_cents) - sum(fee_cents)) / sum(total_cents), 1)
-                                                                       as margem_pct
-  from vw_vendas
- group by rollup (canal)
- order by grouping(canal), receita_liquida_rs desc;
+SELECT COALESCE(canal, 'TOTAL')                                        AS canal,
+       COUNT(*)                                                        AS vendas,
+       ROUND(SUM(subtotal_cents) / 100.0, 2)                           AS receita_bruta_rs,
+       ROUND(SUM(discount_cents) / 100.0, 2)                           AS descontos_rs,
+       ROUND(SUM(shipping_cents) / 100.0, 2)                           AS frete_rs,
+       ROUND(SUM(total_cents) / 100.0, 2)                              AS receita_liquida_rs,
+       ROUND(SUM(cost_cents) / 100.0, 2)                               AS cmv_rs,
+       ROUND(SUM(fee_cents) / 100.0, 2)                                AS taxas_rs,
+       ROUND((SUM(total_cents) - SUM(cost_cents) - SUM(fee_cents)) / 100.0, 2) AS margem_contrib_rs,
+       ROUND(100.0 * (SUM(total_cents) - SUM(cost_cents) - SUM(fee_cents)) / SUM(total_cents), 1)
+                                                                       AS margem_pct
+  FROM vw_vendas
+ GROUP BY ROLLUP (canal)
+ ORDER BY GROUPING(canal), receita_liquida_rs DESC;

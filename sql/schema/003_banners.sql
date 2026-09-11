@@ -1,19 +1,19 @@
-create table if not exists banners (
-  id          uuid primary key default gen_random_uuid(),
-  slot        text not null unique,
-  image_url   text,
-  updated_at  timestamptz not null default now()
+CREATE TABLE IF NOT EXISTS banners (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  slot        TEXT NOT NULL UNIQUE,
+  image_url   TEXT,
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-alter table banners enable row level security;
+ALTER TABLE banners ENABLE ROW LEVEL SECURITY;
 
-create policy "banners_public_read" on banners for select using (true);
-create policy "banners_service_write" on banners for all using (auth.role() = 'service_role');
+CREATE POLICY "banners_public_read" ON banners FOR SELECT USING (TRUE);
+CREATE POLICY "banners_service_write" ON banners FOR ALL USING (auth.role() = 'service_role');
 
-insert into banners (slot, image_url) values
+INSERT INTO banners (slot, image_url) VALUES
   ('hero_nova_colecao',     '/images/hero-colecao-nova.png'),
   ('hero_estilo_proprio',   '/images/hero-estilo-proprio.png'),
   ('text_banner_luxo',      '/images/banner-nobre.webp'),
   ('text_banner_casual',    '/images/banner-ecologico.webp'),
   ('text_banner_dia_a_dia', '/images/hero-distincao-desktop.webp')
-on conflict (slot) do nothing;
+ON CONFLICT (slot) DO NOTHING;

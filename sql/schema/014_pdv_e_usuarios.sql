@@ -5,186 +5,186 @@
 -- ------------------------------------------------------------
 -- Usuários do admin — senha com hash, não mais em variável de ambiente
 -- ------------------------------------------------------------
-create table if not exists admin_users (
-  id            uuid primary key default gen_random_uuid(),
-  email         text not null unique,
-  name          text not null,
-  password_hash text not null,
-  role          text not null default 'vendedora'
-                  check (role in ('dona', 'vendedora', 'estoquista')),
-  active        boolean not null default true,
-  last_login_at timestamptz,
-  created_at    timestamptz not null default now()
+CREATE TABLE IF NOT EXISTS admin_users (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email         TEXT NOT NULL UNIQUE,
+  name          TEXT NOT NULL,
+  password_hash TEXT NOT NULL,
+  role          TEXT NOT NULL DEFAULT 'vendedora'
+                  CHECK (role IN ('dona', 'vendedora', 'estoquista')),
+  active        BOOLEAN NOT NULL DEFAULT TRUE,
+  last_login_at TIMESTAMPTZ,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-alter table admin_users enable row level security;
+ALTER TABLE admin_users ENABLE ROW LEVEL SECURITY;
 
-drop policy if exists "admin_users_service_only" on admin_users;
-create policy "admin_users_service_only"
-  on admin_users for all
-  using (auth.role() = 'service_role');
+DROP POLICY IF EXISTS "admin_users_service_only" ON admin_users;
+CREATE POLICY "admin_users_service_only"
+  ON admin_users FOR ALL
+  USING (auth.role() = 'service_role');
 
-create or replace function set_admin_password(p_email text, p_plain text)
-returns void
-language sql
-security definer
-set search_path = public, extensions
-as $fn$
-  update admin_users
-     set password_hash = crypt(p_plain, gen_salt('bf', 10))
-   where lower(email) = lower(p_email);
+CREATE OR REPLACE FUNCTION set_admin_password(p_email TEXT, p_plain TEXT)
+RETURNS VOID
+LANGUAGE SQL
+SECURITY DEFINER
+SET search_path = public, extensions
+AS $fn$
+  UPDATE admin_users
+     SET password_hash = crypt(p_plain, gen_salt('bf', 10))
+   WHERE LOWER(email) = LOWER(p_email);
 $fn$;
 
-create or replace function verify_admin_password(p_email text, p_plain text)
-returns table (id uuid, email text, name text, role text)
-language sql
-security definer
-set search_path = public, extensions
-as $fn$
-  select u.id, u.email, u.name, u.role
-    from admin_users u
-   where lower(u.email) = lower(p_email)
-     and u.active
-     and u.password_hash = crypt(p_plain, u.password_hash);
+CREATE OR REPLACE FUNCTION verify_admin_password(p_email TEXT, p_plain TEXT)
+RETURNS TABLE (id UUID, email TEXT, name TEXT, role TEXT)
+LANGUAGE SQL
+SECURITY DEFINER
+SET search_path = public, extensions
+AS $fn$
+  SELECT u.id, u.email, u.name, u.role
+    FROM admin_users u
+   WHERE LOWER(u.email) = LOWER(p_email)
+     AND u.active
+     AND u.password_hash = crypt(p_plain, u.password_hash);
 $fn$;
 
 -- ------------------------------------------------------------
 -- Auditoria — quem fez o quê, quando, valor antes/depois.
 -- Obrigatória em estoque, preço, desconto, cancelamento e exclusão.
 -- ------------------------------------------------------------
-create table if not exists audit_log (
-  id          uuid primary key default gen_random_uuid(),
-  actor       text not null,
-  action      text not null,          -- 'update' | 'delete' | 'cancel' | 'discount' | ...
-  entity      text not null,          -- 'product' | 'variant' | 'order' | 'pos_sale' | ...
-  entity_id   uuid,
-  before      jsonb,
-  after       jsonb,
-  note        text,
-  created_at  timestamptz not null default now()
+CREATE TABLE IF NOT EXISTS audit_log (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  actor       TEXT NOT NULL,
+  action      TEXT NOT NULL,          -- 'update' | 'delete' | 'cancel' | 'discount' | ...
+  entity      TEXT NOT NULL,          -- 'product' | 'variant' | 'order' | 'pos_sale' | ...
+  entity_id   UUID,
+  before      JSONB,
+  after       JSONB,
+  note        TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-create index if not exists audit_log_entity_idx  on audit_log(entity, entity_id, created_at desc);
-create index if not exists audit_log_created_idx on audit_log(created_at desc);
+CREATE INDEX IF NOT EXISTS audit_log_entity_idx  ON audit_log(entity, entity_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS audit_log_created_idx ON audit_log(created_at DESC);
 
-alter table audit_log enable row level security;
+ALTER TABLE audit_log ENABLE ROW LEVEL SECURITY;
 
-drop policy if exists "audit_log_service_only" on audit_log;
-create policy "audit_log_service_only"
-  on audit_log for all
-  using (auth.role() = 'service_role');
+DROP POLICY IF EXISTS "audit_log_service_only" ON audit_log;
+CREATE POLICY "audit_log_service_only"
+  ON audit_log FOR ALL
+  USING (auth.role() = 'service_role');
 
 -- ------------------------------------------------------------
 -- Caixa
 -- ------------------------------------------------------------
-create table if not exists cash_sessions (
-  id              uuid primary key default gen_random_uuid(),
-  opened_by       text not null,
-  opened_at       timestamptz not null default now(),
-  opening_cents   int  not null default 0,   -- fundo de troco
-  closed_by       text,
-  closed_at       timestamptz,
-  counted_cents   int,                       -- dinheiro contado na gaveta
-  expected_cents  int,                       -- o que o sistema esperava
-  difference_cents int,
-  note            text
+CREATE TABLE IF NOT EXISTS cash_sessions (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  opened_by       TEXT NOT NULL,
+  opened_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  opening_cents   INT  NOT NULL DEFAULT 0,   -- fundo de troco
+  closed_by       TEXT,
+  closed_at       TIMESTAMPTZ,
+  counted_cents   INT,                       -- dinheiro contado na gaveta
+  expected_cents  INT,                       -- o que o sistema esperava
+  difference_cents INT,
+  note            TEXT
 );
 
-create index if not exists cash_sessions_open_idx on cash_sessions(closed_at)
-  where closed_at is null;
+CREATE INDEX IF NOT EXISTS cash_sessions_open_idx ON cash_sessions(closed_at)
+  WHERE closed_at IS NULL;
 
 -- Sangria e suprimento
-create table if not exists cash_movements (
-  id          uuid primary key default gen_random_uuid(),
-  session_id  uuid not null references cash_sessions(id) on delete cascade,
-  kind        text not null check (kind in ('sangria', 'suprimento')),
-  amount_cents int not null check (amount_cents > 0),
-  reason      text,
-  created_by  text not null default 'sistema',
-  created_at  timestamptz not null default now()
+CREATE TABLE IF NOT EXISTS cash_movements (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id  UUID NOT NULL REFERENCES cash_sessions(id) ON DELETE CASCADE,
+  kind        TEXT NOT NULL CHECK (kind IN ('sangria', 'suprimento')),
+  amount_cents INT NOT NULL CHECK (amount_cents > 0),
+  reason      TEXT,
+  created_by  TEXT NOT NULL DEFAULT 'sistema',
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- ------------------------------------------------------------
 -- Vendas de balcão
 -- ------------------------------------------------------------
-create table if not exists pos_sales (
-  id              uuid primary key default gen_random_uuid(),
-  sale_number     int,
-  session_id      uuid references cash_sessions(id) on delete set null,
-  customer_id     uuid references customers(id) on delete set null,
-  seller          text not null,
-  subtotal_cents  int not null default 0,
-  discount_cents  int not null default 0,
-  total_cents     int not null default 0,
-  cost_cents      int not null default 0,   -- CMV congelado da venda
-  status          text not null default 'concluida'
-                    check (status in ('concluida', 'cancelada')),
-  cancelled_by    text,
-  cancelled_at    timestamptz,
-  cancel_reason   text,
-  discount_authorized_by text,              -- quem liberou desconto acima do teto
-  note            text,
-  created_at      timestamptz not null default now()
+CREATE TABLE IF NOT EXISTS pos_sales (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  sale_number     INT,
+  session_id      UUID REFERENCES cash_sessions(id) ON DELETE SET NULL,
+  customer_id     UUID REFERENCES customers(id) ON DELETE SET NULL,
+  seller          TEXT NOT NULL,
+  subtotal_cents  INT NOT NULL DEFAULT 0,
+  discount_cents  INT NOT NULL DEFAULT 0,
+  total_cents     INT NOT NULL DEFAULT 0,
+  cost_cents      INT NOT NULL DEFAULT 0,   -- CMV congelado da venda
+  status          TEXT NOT NULL DEFAULT 'concluida'
+                    CHECK (status IN ('concluida', 'cancelada')),
+  cancelled_by    TEXT,
+  cancelled_at    TIMESTAMPTZ,
+  cancel_reason   TEXT,
+  discount_authorized_by TEXT,              -- quem liberou desconto acima do teto
+  note            TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-create sequence if not exists pos_sales_number_seq start 1;
-alter table pos_sales alter column sale_number set default nextval('pos_sales_number_seq');
+CREATE SEQUENCE IF NOT EXISTS pos_sales_number_seq START 1;
+ALTER TABLE pos_sales ALTER COLUMN sale_number SET DEFAULT NEXTVAL('pos_sales_number_seq');
 
-create index if not exists pos_sales_created_idx  on pos_sales(created_at desc);
-create index if not exists pos_sales_session_idx  on pos_sales(session_id);
-create index if not exists pos_sales_customer_idx on pos_sales(customer_id);
+CREATE INDEX IF NOT EXISTS pos_sales_created_idx  ON pos_sales(created_at DESC);
+CREATE INDEX IF NOT EXISTS pos_sales_session_idx  ON pos_sales(session_id);
+CREATE INDEX IF NOT EXISTS pos_sales_customer_idx ON pos_sales(customer_id);
 
-create table if not exists pos_sale_items (
-  id                    uuid primary key default gen_random_uuid(),
-  sale_id               uuid not null references pos_sales(id) on delete cascade,
-  variant_id            uuid not null references product_variants(id) on delete restrict,
-  quantity              int  not null check (quantity > 0),
-  unit_price_cents      int  not null,
-  discount_cents        int  not null default 0,
-  cost_cents_snapshot   int  not null default 0,
-  product_name_snapshot text,
-  size_snapshot         text,
-  color_snapshot        text
+CREATE TABLE IF NOT EXISTS pos_sale_items (
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  sale_id               UUID NOT NULL REFERENCES pos_sales(id) ON DELETE CASCADE,
+  variant_id            UUID NOT NULL REFERENCES product_variants(id) ON DELETE RESTRICT,
+  quantity              INT  NOT NULL CHECK (quantity > 0),
+  unit_price_cents      INT  NOT NULL,
+  discount_cents        INT  NOT NULL DEFAULT 0,
+  cost_cents_snapshot   INT  NOT NULL DEFAULT 0,
+  product_name_snapshot TEXT,
+  size_snapshot         TEXT,
+  color_snapshot        TEXT
 );
 
-create index if not exists pos_sale_items_sale_idx on pos_sale_items(sale_id);
+CREATE INDEX IF NOT EXISTS pos_sale_items_sale_idx ON pos_sale_items(sale_id);
 
 -- Pagamento dividido: metade PIX, metade cartão.
 -- A taxa da maquininha fica registrada aqui, senão o "faturamento" mente 3-5%.
-create table if not exists pos_payments (
-  id            uuid primary key default gen_random_uuid(),
-  sale_id       uuid not null references pos_sales(id) on delete cascade,
-  method        text not null check (method in (
+CREATE TABLE IF NOT EXISTS pos_payments (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  sale_id       UUID NOT NULL REFERENCES pos_sales(id) ON DELETE CASCADE,
+  method        TEXT NOT NULL CHECK (method IN (
                   'dinheiro', 'pix', 'debito', 'credito', 'credito_parcelado', 'vale_troca'
                 )),
-  amount_cents  int not null check (amount_cents > 0),
-  installments  int not null default 1,
-  fee_cents     int not null default 0,
-  brand         text
+  amount_cents  INT NOT NULL CHECK (amount_cents > 0),
+  installments  INT NOT NULL DEFAULT 1,
+  fee_cents     INT NOT NULL DEFAULT 0,
+  brand         TEXT
 );
 
-create index if not exists pos_payments_sale_idx on pos_payments(sale_id);
+CREATE INDEX IF NOT EXISTS pos_payments_sale_idx ON pos_payments(sale_id);
 
-alter table cash_sessions  enable row level security;
-alter table cash_movements enable row level security;
-alter table pos_sales      enable row level security;
-alter table pos_sale_items enable row level security;
-alter table pos_payments   enable row level security;
+ALTER TABLE cash_sessions  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE cash_movements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pos_sales      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pos_sale_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pos_payments   ENABLE ROW LEVEL SECURITY;
 
-do $do$
-declare t text;
-begin
-  foreach t in array array['cash_sessions','cash_movements','pos_sales','pos_sale_items','pos_payments']
-  loop
-    execute format('drop policy if exists %I on %I', t || '_service_only', t);
-    execute format(
+DO $do$
+DECLARE t TEXT;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['cash_sessions','cash_movements','pos_sales','pos_sale_items','pos_payments']
+  LOOP
+    EXECUTE format('drop policy if exists %I on %I', t || '_service_only', t);
+    EXECUTE format(
       'create policy %I on %I for all using (auth.role() = ''service_role'')',
       t || '_service_only', t
     );
-  end loop;
-end $do$;
+  END LOOP;
+END $do$;
 
 -- Nada aqui é público: vendas, caixa, usuários e auditoria.
-revoke all on admin_users, audit_log, cash_sessions, cash_movements,
+REVOKE ALL ON admin_users, audit_log, cash_sessions, cash_movements,
               pos_sales, pos_sale_items, pos_payments
-         from anon, authenticated;
+         FROM anon, authenticated;

@@ -1,30 +1,30 @@
 -- Pergunta: quais produtos sustentam a loja? (Pareto / curva ABC)
 -- Técnicas: soma acumulada com window frame explícito, classificação por faixa.
 -- Receita no grão de item = preço unitário congelado × quantidade (antes do desconto do pedido).
-with produto as (
-  select produto, categoria,
-         sum(qtd)           as pecas,
-         sum(receita_cents) as receita,
-         sum(receita_cents - custo_cents) as margem
-    from vw_itens_vendidos
-   group by produto, categoria
+WITH produto AS (
+  SELECT produto, categoria,
+         SUM(qtd)           AS pecas,
+         SUM(receita_cents) AS receita,
+         SUM(receita_cents - custo_cents) AS margem
+    FROM vw_itens_vendidos
+   GROUP BY produto, categoria
 ),
-acumulado as (
-  select *,
-         100.0 * sum(receita) over (order by receita desc rows between unbounded preceding and current row)
-               / sum(receita) over () as pct_acumulado,
-         row_number() over (order by receita desc) as posicao
-    from produto
+acumulado AS (
+  SELECT *,
+         100.0 * SUM(receita) OVER (ORDER BY receita DESC ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+               / SUM(receita) OVER () AS pct_acumulado,
+         ROW_NUMBER() OVER (ORDER BY receita DESC) AS posicao
+    FROM produto
 )
-select posicao,
+SELECT posicao,
        produto,
        categoria,
        pecas,
-       round(receita / 100.0, 2)            as receita_rs,
-       round(100.0 * margem / receita, 1)   as margem_pct,
-       round(pct_acumulado, 1)              as pct_acumulado,
-       case when pct_acumulado <= 80 then 'A'
-            when pct_acumulado <= 95 then 'B'
-            else 'C' end                    as classe
-  from acumulado
- order by posicao;
+       ROUND(receita / 100.0, 2)            AS receita_rs,
+       ROUND(100.0 * margem / receita, 1)   AS margem_pct,
+       ROUND(pct_acumulado, 1)              AS pct_acumulado,
+       CASE WHEN pct_acumulado <= 80 THEN 'A'
+            WHEN pct_acumulado <= 95 THEN 'B'
+            ELSE 'C' END                    AS classe
+  FROM acumulado
+ ORDER BY posicao;

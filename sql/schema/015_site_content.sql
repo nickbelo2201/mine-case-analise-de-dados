@@ -8,18 +8,18 @@
 -- Linha ausente = o site usa o padrão de fábrica de `src/data/content.ts`.
 -- Por isso não há seed aqui: no dia do deploy a vitrine continua idêntica.
 
-create table if not exists site_content (
-  key         text primary key,
-  value       jsonb not null default '{}'::jsonb,
-  updated_at  timestamptz not null default now(),
-  updated_by  text
+CREATE TABLE IF NOT EXISTS site_content (
+  key         TEXT PRIMARY KEY,
+  value       JSONB NOT NULL DEFAULT '{}'::JSONB,
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_by  TEXT
 );
 
-alter table site_content enable row level security;
+ALTER TABLE site_content ENABLE ROW LEVEL SECURITY;
 
 -- Mesma dupla de policies dos banners: a vitrine lê, só o service role escreve.
-drop policy if exists "site_content_public_read" on site_content;
-drop policy if exists "site_content_service_write" on site_content;
+DROP POLICY IF EXISTS "site_content_public_read" ON site_content;
+DROP POLICY IF EXISTS "site_content_service_write" ON site_content;
 
-create policy "site_content_public_read" on site_content for select using (true);
-create policy "site_content_service_write" on site_content for all using (auth.role() = 'service_role');
+CREATE POLICY "site_content_public_read" ON site_content FOR SELECT USING (TRUE);
+CREATE POLICY "site_content_service_write" ON site_content FOR ALL USING (auth.role() = 'service_role');

@@ -68,28 +68,28 @@ Diagrama completo com colunas e o raciocínio por trás de cada escolha em **[do
 Toda entrada ou saída vira uma linha em `stock_movements`. O saldo só muda por uma função que grava o movimento e o saldo **na mesma transação**, travando a linha:
 
 ```sql
-select stock_on_hand + p_delta into v_new
-  from product_variants
- where id = p_variant_id
-   for update;                       -- serializa movimentos concorrentes
+SELECT stock_on_hand + p_delta INTO v_new
+  FROM product_variants
+ WHERE id = p_variant_id
+   FOR UPDATE;                       -- serializa movimentos concorrentes
 
-if v_new < 0 and p_reason not in ('ajuste', 'inventario') then
-  raise exception 'Estoque insuficiente' using errcode = 'check_violation';
-end if;
+IF v_new < 0 AND p_reason NOT IN ('ajuste', 'inventario') THEN
+  RAISE EXCEPTION 'Estoque insuficiente' USING errcode = 'check_violation';
+END IF;
 
-update product_variants set stock_on_hand = v_new where id = p_variant_id;
-insert into stock_movements (variant_id, delta, reason, ref_type, ref_id, created_by)
-values (p_variant_id, p_delta, p_reason, p_ref_type, p_ref_id, p_by);
+UPDATE product_variants SET stock_on_hand = v_new WHERE id = p_variant_id;
+INSERT INTO stock_movements (variant_id, delta, reason, ref_type, ref_id, created_by)
+VALUES (p_variant_id, p_delta, p_reason, p_ref_type, p_ref_id, p_by);
 ```
 
 E dá para **provar** que o saldo está certo:
 
 ```sql
-select v.id, v.stock_on_hand, coalesce(m.total, 0) as soma_movimentos
-  from product_variants v
-  left join (select variant_id, sum(delta) as total
-               from stock_movements group by variant_id) m on m.variant_id = v.id
- where v.stock_on_hand <> coalesce(m.total, 0);   -- esperado: 0 linhas
+SELECT v.id, v.stock_on_hand, COALESCE(m.total, 0) AS soma_movimentos
+  FROM product_variants v
+  LEFT JOIN (SELECT variant_id, SUM(delta) AS total
+               FROM stock_movements GROUP BY variant_id) m ON m.variant_id = v.id
+ WHERE v.stock_on_hand <> COALESCE(m.total, 0);   -- esperado: 0 linhas
 ```
 → [`sql/schema/011_stock.sql`](sql/schema/011_stock.sql)
 </details>
@@ -98,11 +98,11 @@ select v.id, v.stock_on_hand, coalesce(m.total, 0) as soma_movimentos
 <summary><b>2. Reserva atômica: o site nunca vende o que saiu no balcão</b></summary>
 
 ```sql
-update product_variants v
-   set stock_reserved = v.stock_reserved + p_qty
- where v.id = p_variant_id
-   and v.stock_on_hand - v.stock_reserved - v_safety >= p_qty;
-get diagnostics v_rows = row_count;   -- 0 = não havia saldo
+UPDATE product_variants v
+   SET stock_reserved = v.stock_reserved + p_qty
+ WHERE v.id = p_variant_id
+   AND v.stock_on_hand - v.stock_reserved - v_safety >= p_qty;
+GET DIAGNOSTICS v_rows = ROW_COUNT;   -- 0 = não havia saldo
 ```
 
 Não existe "ler o saldo, decidir e gravar" na aplicação. Reservas vencidas são liberadas por um job com `FOR UPDATE SKIP LOCKED`.

@@ -11,23 +11,23 @@
 
 -- Regra de "vendido": pedido online conta a partir de confirmado;
 -- devolvido e cancelado não entram na receita.
-create or replace view vw_vendas as
-select o.id                     as venda_id,
-       o.channel                as canal,
+CREATE OR REPLACE VIEW vw_vendas AS
+SELECT o.id                     AS venda_id,
+       o.channel                AS canal,
        o.customer_id,
        o.created_at,
        o.subtotal_cents,
        o.discount_cents,
        o.shipping_cents,
        o.total_cents,
-       coalesce(i.custo, 0)     as cost_cents,
-       0                        as fee_cents
-  from orders o
-  left join (select order_id, sum(cost_cents_snapshot * quantity)::int as custo
-               from order_items group by order_id) i on i.order_id = o.id
- where o.status in ('confirmado', 'pago', 'enviado', 'entregue')
-union all
-select s.id,
+       COALESCE(i.custo, 0)     AS cost_cents,
+       0                        AS fee_cents
+  FROM orders o
+  LEFT JOIN (SELECT order_id, SUM(cost_cents_snapshot * quantity)::INT AS custo
+               FROM order_items GROUP BY order_id) i ON i.order_id = o.id
+ WHERE o.status IN ('confirmado', 'pago', 'enviado', 'entregue')
+UNION ALL
+SELECT s.id,
        'loja',
        s.customer_id,
        s.created_at,
@@ -36,40 +36,40 @@ select s.id,
        0,
        s.total_cents,
        s.cost_cents,
-       coalesce(p.taxa, 0)
-  from pos_sales s
-  left join (select sale_id, sum(fee_cents)::int as taxa
-               from pos_payments group by sale_id) p on p.sale_id = s.id
- where s.status = 'concluida';
+       COALESCE(p.taxa, 0)
+  FROM pos_sales s
+  LEFT JOIN (SELECT sale_id, SUM(fee_cents)::INT AS taxa
+               FROM pos_payments GROUP BY sale_id) p ON p.sale_id = s.id
+ WHERE s.status = 'concluida';
 
 -- Grão de item, já com categoria e produto do catálogo atual.
 -- Nome/tamanho/cor vêm do snapshot congelado na venda.
-create or replace view vw_itens_vendidos as
-select v.venda_id,
+CREATE OR REPLACE VIEW vw_itens_vendidos AS
+SELECT v.venda_id,
        v.canal,
        v.customer_id,
        v.created_at,
        i.variant_id,
        pv.product_id,
-       i.product_name_snapshot                   as produto,
-       p.category                                as categoria,
-       i.size_snapshot                           as tamanho,
-       i.color_snapshot                          as cor,
-       i.quantity                                as qtd,
-       i.unit_price_cents * i.quantity           as receita_cents,
-       i.cost_cents_snapshot * i.quantity        as custo_cents
-  from vw_vendas v
-  join (
-    select order_id as venda_id, variant_id, product_name_snapshot, size_snapshot, color_snapshot,
+       i.product_name_snapshot                   AS produto,
+       p.category                                AS categoria,
+       i.size_snapshot                           AS tamanho,
+       i.color_snapshot                          AS cor,
+       i.quantity                                AS qtd,
+       i.unit_price_cents * i.quantity           AS receita_cents,
+       i.cost_cents_snapshot * i.quantity        AS custo_cents
+  FROM vw_vendas v
+  JOIN (
+    SELECT order_id AS venda_id, variant_id, product_name_snapshot, size_snapshot, color_snapshot,
            quantity, unit_price_cents, cost_cents_snapshot
-      from order_items
-    union all
-    select sale_id, variant_id, product_name_snapshot, size_snapshot, color_snapshot,
+      FROM order_items
+    UNION ALL
+    SELECT sale_id, variant_id, product_name_snapshot, size_snapshot, color_snapshot,
            quantity, unit_price_cents, cost_cents_snapshot
-      from pos_sale_items
-  ) i on i.venda_id = v.venda_id
-  join product_variants pv on pv.id = i.variant_id
-  join products p          on p.id  = pv.product_id;
+      FROM pos_sale_items
+  ) i ON i.venda_id = v.venda_id
+  JOIN product_variants pv ON pv.id = i.variant_id
+  JOIN products p          ON p.id  = pv.product_id;
 
 -- Views analíticas também não são públicas.
-revoke all on vw_vendas, vw_itens_vendidos from anon, authenticated;
+REVOKE ALL ON vw_vendas, vw_itens_vendidos FROM anon, authenticated;

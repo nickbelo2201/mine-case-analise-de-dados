@@ -23,10 +23,10 @@ Cada decisão abaixo segue o formato: **problema → decisão → por quê → o
 **Decisão:** o pedido online **reserva** a peça (`stock_reserved`) com um `UPDATE` condicional:
 
 ```sql
-update product_variants v
-   set stock_reserved = v.stock_reserved + p_qty
- where v.id = p_variant_id
-   and v.stock_on_hand - v.stock_reserved - v_safety >= p_qty;
+UPDATE product_variants v
+   SET stock_reserved = v.stock_reserved + p_qty
+ WHERE v.id = p_variant_id
+   AND v.stock_on_hand - v.stock_reserved - v_safety >= p_qty;
 -- 0 linhas afetadas = não havia saldo. Nunca "lê, decide, grava".
 ```
 

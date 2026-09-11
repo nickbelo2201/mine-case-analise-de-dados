@@ -7,227 +7,227 @@
 -- que gravam o movimento e ajustam o saldo na mesma transação.
 -- ============================================================
 
-create table if not exists stock_movements (
-  id          uuid primary key default gen_random_uuid(),
-  variant_id  uuid not null references product_variants(id) on delete restrict,
-  delta       int  not null check (delta <> 0),   -- + entrada / − saída
-  reason      text not null check (reason in (
+CREATE TABLE IF NOT EXISTS stock_movements (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  variant_id  UUID NOT NULL REFERENCES product_variants(id) ON DELETE RESTRICT,
+  delta       INT  NOT NULL CHECK (delta <> 0),   -- + entrada / − saída
+  reason      TEXT NOT NULL CHECK (reason IN (
                 'venda_online', 'venda_loja', 'devolucao', 'perda', 'ajuste',
                 'entrada_compra', 'inventario', 'transferencia', 'mostruario'
               )),
   -- Origem do movimento: 'order' / 'pos_sale' / 'purchase' / 'inventory'
-  ref_type    text,
-  ref_id      uuid,
-  note        text,
-  created_by  text not null default 'sistema',
-  created_at  timestamptz not null default now()
+  ref_type    TEXT,
+  ref_id      UUID,
+  note        TEXT,
+  created_by  TEXT NOT NULL DEFAULT 'sistema',
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-create index if not exists stock_movements_variant_idx on stock_movements(variant_id, created_at desc);
-create index if not exists stock_movements_reason_idx  on stock_movements(reason);
-create index if not exists stock_movements_created_idx on stock_movements(created_at desc);
+CREATE INDEX IF NOT EXISTS stock_movements_variant_idx ON stock_movements(variant_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS stock_movements_reason_idx  ON stock_movements(reason);
+CREATE INDEX IF NOT EXISTS stock_movements_created_idx ON stock_movements(created_at DESC);
 
 -- Idempotência: um mesmo pedido não pode baixar o mesmo item duas vezes.
-create unique index if not exists stock_movements_ref_unique
-  on stock_movements(ref_type, ref_id, variant_id, reason)
-  where ref_id is not null;
+CREATE UNIQUE INDEX IF NOT EXISTS stock_movements_ref_unique
+  ON stock_movements(ref_type, ref_id, variant_id, reason)
+  WHERE ref_id IS NOT NULL;
 
-alter table stock_movements enable row level security;
+ALTER TABLE stock_movements ENABLE ROW LEVEL SECURITY;
 
-drop policy if exists "stock_movements_service_only" on stock_movements;
-create policy "stock_movements_service_only"
-  on stock_movements for all
-  using (auth.role() = 'service_role');
+DROP POLICY IF EXISTS "stock_movements_service_only" ON stock_movements;
+CREATE POLICY "stock_movements_service_only"
+  ON stock_movements FOR ALL
+  USING (auth.role() = 'service_role');
 
 -- ------------------------------------------------------------
 -- apply_stock_movement — grava o movimento e ajusta o saldo.
 -- Recusa se levaria o saldo a negativo, exceto em 'ajuste'/'inventario',
 -- onde o número contado é a verdade (mas nunca abaixo de zero).
 -- ------------------------------------------------------------
-create or replace function apply_stock_movement(
-  p_variant_id uuid,
-  p_delta      int,
-  p_reason     text,
-  p_ref_type   text default null,
-  p_ref_id     uuid default null,
-  p_note       text default null,
-  p_by         text default 'sistema'
-) returns uuid
-language plpgsql
-security definer
-set search_path = public
-as $fn$
-declare
-  v_id  uuid;
-  v_new int;
-begin
-  if p_delta = 0 then
-    raise exception 'Movimento de estoque com quantidade zero.';
-  end if;
+CREATE OR REPLACE FUNCTION apply_stock_movement(
+  p_variant_id UUID,
+  p_delta      INT,
+  p_reason     TEXT,
+  p_ref_type   TEXT DEFAULT NULL,
+  p_ref_id     UUID DEFAULT NULL,
+  p_note       TEXT DEFAULT NULL,
+  p_by         TEXT DEFAULT 'sistema'
+) RETURNS UUID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $fn$
+DECLARE
+  v_id  UUID;
+  v_new INT;
+BEGIN
+  IF p_delta = 0 THEN
+    RAISE EXCEPTION 'Movimento de estoque com quantidade zero.';
+  END IF;
 
   -- Trava a linha para serializar movimentos concorrentes na mesma variante.
-  select stock_on_hand + p_delta into v_new
-    from product_variants
-   where id = p_variant_id
-     for update;
+  SELECT stock_on_hand + p_delta INTO v_new
+    FROM product_variants
+   WHERE id = p_variant_id
+     FOR UPDATE;
 
-  if not found then
-    raise exception 'Variante % não encontrada.', p_variant_id;
-  end if;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Variante % não encontrada.', p_variant_id;
+  END IF;
 
-  if v_new < 0 then
-    if p_reason in ('ajuste', 'inventario') then
+  IF v_new < 0 THEN
+    IF p_reason IN ('ajuste', 'inventario') THEN
       v_new := 0;
-    else
-      raise exception 'Estoque insuficiente: a operação deixaria o saldo negativo.'
-        using errcode = 'check_violation';
-    end if;
-  end if;
+    ELSE
+      RAISE EXCEPTION 'Estoque insuficiente: a operação deixaria o saldo negativo.'
+        USING errcode = 'check_violation';
+    END IF;
+  END IF;
 
-  update product_variants
-     set stock_on_hand = v_new,
-         updated_at    = now()
-   where id = p_variant_id;
+  UPDATE product_variants
+     SET stock_on_hand = v_new,
+         updated_at    = NOW()
+   WHERE id = p_variant_id;
 
-  insert into stock_movements (variant_id, delta, reason, ref_type, ref_id, note, created_by)
-  values (p_variant_id, p_delta, p_reason, p_ref_type, p_ref_id, p_note, p_by)
-  returning id into v_id;
+  INSERT INTO stock_movements (variant_id, delta, reason, ref_type, ref_id, note, created_by)
+  VALUES (p_variant_id, p_delta, p_reason, p_ref_type, p_ref_id, p_note, p_by)
+  RETURNING id INTO v_id;
 
-  return v_id;
-end $fn$;
+  RETURN v_id;
+END $fn$;
 
 -- ------------------------------------------------------------
 -- reserve_stock — a trava anti-oversell.
 -- O UPDATE condicional é atômico: se afetou 0 linhas, não havia saldo.
 -- Nunca lê o saldo na aplicação para depois gravar.
 -- ------------------------------------------------------------
-create or replace function reserve_stock(
-  p_variant_id uuid,
-  p_qty        int,
-  p_channel    text default 'site'
-) returns boolean
-language plpgsql
-security definer
-set search_path = public
-as $fn$
-declare
-  v_safety int := 0;
-  v_rows   int;
-begin
-  if p_qty <= 0 then
-    raise exception 'Quantidade inválida para reserva.';
-  end if;
+CREATE OR REPLACE FUNCTION reserve_stock(
+  p_variant_id UUID,
+  p_qty        INT,
+  p_channel    TEXT DEFAULT 'site'
+) RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $fn$
+DECLARE
+  v_safety INT := 0;
+  v_rows   INT;
+BEGIN
+  IF p_qty <= 0 THEN
+    RAISE EXCEPTION 'Quantidade inválida para reserva.';
+  END IF;
 
-  if p_channel = 'site' then
-    select site_safety_stock into v_safety from store_settings where id = 1;
-  end if;
+  IF p_channel = 'site' THEN
+    SELECT site_safety_stock INTO v_safety FROM store_settings WHERE id = 1;
+  END IF;
 
-  update product_variants v
-     set stock_reserved = v.stock_reserved + p_qty,
-         updated_at     = now()
-    from products p
-   where v.id = p_variant_id
-     and p.id = v.product_id
-     and v.active
-     and (p_channel <> 'site' or p.status = 'ativo')
-     and v.stock_on_hand - v.stock_reserved - coalesce(v_safety, 0) >= p_qty;
+  UPDATE product_variants v
+     SET stock_reserved = v.stock_reserved + p_qty,
+         updated_at     = NOW()
+    FROM products p
+   WHERE v.id = p_variant_id
+     AND p.id = v.product_id
+     AND v.active
+     AND (p_channel <> 'site' OR p.status = 'ativo')
+     AND v.stock_on_hand - v.stock_reserved - COALESCE(v_safety, 0) >= p_qty;
 
-  get diagnostics v_rows = row_count;
-  return v_rows > 0;
-end $fn$;
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  RETURN v_rows > 0;
+END $fn$;
 
 -- ------------------------------------------------------------
 -- release_stock — devolve a reserva (pedido cancelado ou expirado).
 -- ------------------------------------------------------------
-create or replace function release_stock(
-  p_variant_id uuid,
-  p_qty        int
-) returns void
-language plpgsql
-security definer
-set search_path = public
-as $fn$
-begin
-  update product_variants
-     set stock_reserved = greatest(stock_reserved - p_qty, 0),
-         updated_at     = now()
-   where id = p_variant_id;
-end $fn$;
+CREATE OR REPLACE FUNCTION release_stock(
+  p_variant_id UUID,
+  p_qty        INT
+) RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $fn$
+BEGIN
+  UPDATE product_variants
+     SET stock_reserved = GREATEST(stock_reserved - p_qty, 0),
+         updated_at     = NOW()
+   WHERE id = p_variant_id;
+END $fn$;
 
 -- ------------------------------------------------------------
 -- commit_reservation — libera a reserva e aplica a saída definitiva,
 -- numa transação só. Idempotente por (ref_type, ref_id, variante).
 -- ------------------------------------------------------------
-create or replace function commit_reservation(
-  p_variant_id uuid,
-  p_qty        int,
-  p_reason     text,
-  p_ref_type   text,
-  p_ref_id     uuid,
-  p_by         text default 'sistema'
-) returns uuid
-language plpgsql
-security definer
-set search_path = public
-as $fn$
-declare
-  v_existing uuid;
-begin
-  select id into v_existing
-    from stock_movements
-   where ref_type = p_ref_type and ref_id = p_ref_id
-     and variant_id = p_variant_id and reason = p_reason;
+CREATE OR REPLACE FUNCTION commit_reservation(
+  p_variant_id UUID,
+  p_qty        INT,
+  p_reason     TEXT,
+  p_ref_type   TEXT,
+  p_ref_id     UUID,
+  p_by         TEXT DEFAULT 'sistema'
+) RETURNS UUID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $fn$
+DECLARE
+  v_existing UUID;
+BEGIN
+  SELECT id INTO v_existing
+    FROM stock_movements
+   WHERE ref_type = p_ref_type AND ref_id = p_ref_id
+     AND variant_id = p_variant_id AND reason = p_reason;
 
-  if v_existing is not null then
-    return v_existing;   -- já baixado: clicar duas vezes não dobra nada
-  end if;
+  IF v_existing IS NOT NULL THEN
+    RETURN v_existing;   -- já baixado: clicar duas vezes não dobra nada
+  END IF;
 
-  perform release_stock(p_variant_id, p_qty);
-  return apply_stock_movement(
-    p_variant_id, -p_qty, p_reason, p_ref_type, p_ref_id, null, p_by
+  PERFORM release_stock(p_variant_id, p_qty);
+  RETURN apply_stock_movement(
+    p_variant_id, -p_qty, p_reason, p_ref_type, p_ref_id, NULL, p_by
   );
-end $fn$;
+END $fn$;
 
 -- ------------------------------------------------------------
 -- check_stock_integrity — rede de segurança contra bug de código.
 -- A soma das movimentações tem que bater com o saldo materializado.
 -- ------------------------------------------------------------
-create or replace function check_stock_integrity()
-returns table (
-  variant_id     uuid,
-  sku            text,
-  saldo_atual    int,
-  soma_movimentos int,
-  divergencia    int
+CREATE OR REPLACE FUNCTION check_stock_integrity()
+RETURNS TABLE (
+  variant_id     UUID,
+  sku            TEXT,
+  saldo_atual    INT,
+  soma_movimentos INT,
+  divergencia    INT
 )
-language sql
-stable
-as $fn$
-  select v.id,
+LANGUAGE SQL
+STABLE
+AS $fn$
+  SELECT v.id,
          v.sku,
          v.stock_on_hand,
-         coalesce(m.total, 0)::int,
-         v.stock_on_hand - coalesce(m.total, 0)::int
-    from product_variants v
-    left join (
-      select variant_id, sum(delta) as total
-        from stock_movements
-       group by variant_id
-    ) m on m.variant_id = v.id
-   where v.stock_on_hand <> coalesce(m.total, 0);
+         COALESCE(m.total, 0)::INT,
+         v.stock_on_hand - COALESCE(m.total, 0)::INT
+    FROM product_variants v
+    LEFT JOIN (
+      SELECT variant_id, SUM(delta) AS total
+        FROM stock_movements
+       GROUP BY variant_id
+    ) m ON m.variant_id = v.id
+   WHERE v.stock_on_hand <> COALESCE(m.total, 0);
 $fn$;
 
 -- ------------------------------------------------------------
 -- Lançamento inicial: o saldo que veio da migração precisa existir
 -- como movimento, senão a conferência de integridade acusa tudo.
 -- ------------------------------------------------------------
-insert into stock_movements (variant_id, delta, reason, ref_type, ref_id, note, created_by)
-select v.id, v.stock_on_hand, 'inventario', 'migration',
-       '00000000-0000-0000-0000-000000000010'::uuid,
+INSERT INTO stock_movements (variant_id, delta, reason, ref_type, ref_id, note, created_by)
+SELECT v.id, v.stock_on_hand, 'inventario', 'migration',
+       '00000000-0000-0000-0000-000000000010'::UUID,
        'Saldo inicial migrado do cadastro antigo', 'migracao'
-  from product_variants v
- where v.stock_on_hand > 0
-on conflict do nothing;
+  FROM product_variants v
+ WHERE v.stock_on_hand > 0
+ON CONFLICT DO NOTHING;
 
 -- O histórico de estoque é interno.
-revoke all on stock_movements from anon, authenticated;
+REVOKE ALL ON stock_movements FROM anon, authenticated;

@@ -1,32 +1,32 @@
-create table if not exists categories (
-  id          uuid primary key default gen_random_uuid(),
-  name        text not null,
-  slug        text not null unique,
-  parent_id   uuid references categories(id) on delete set null,
-  image_url   text,
-  sort_order  int not null default 0,
-  active      boolean not null default true,
-  created_at  timestamptz not null default now()
+CREATE TABLE IF NOT EXISTS categories (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name        TEXT NOT NULL,
+  slug        TEXT NOT NULL UNIQUE,
+  parent_id   UUID REFERENCES categories(id) ON DELETE SET NULL,
+  image_url   TEXT,
+  sort_order  INT NOT NULL DEFAULT 0,
+  active      BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-create index if not exists categories_slug_idx   on categories(slug);
-create index if not exists categories_parent_idx on categories(parent_id);
-create index if not exists categories_sort_idx   on categories(sort_order);
+CREATE INDEX IF NOT EXISTS categories_slug_idx   ON categories(slug);
+CREATE INDEX IF NOT EXISTS categories_parent_idx ON categories(parent_id);
+CREATE INDEX IF NOT EXISTS categories_sort_idx   ON categories(sort_order);
 
-alter table categories enable row level security;
+ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
 
-create policy "categories_public_read"
-  on categories for select
-  using (true);
+CREATE POLICY "categories_public_read"
+  ON categories FOR SELECT
+  USING (TRUE);
 
-create policy "categories_service_write"
-  on categories for all
-  using (auth.role() = 'service_role');
+CREATE POLICY "categories_service_write"
+  ON categories FOR ALL
+  USING (auth.role() = 'service_role');
 
-insert into categories (name, slug, sort_order) values
+INSERT INTO categories (name, slug, sort_order) VALUES
   ('Camisetas', 'camisetas', 1),
   ('Calças',    'calcas',    2),
   ('Bermudas',  'bermudas',  3),
   ('Moletons',  'moletons',  4),
   ('Jaquetas',  'jaquetas',  5)
-on conflict (slug) do nothing;
+ON CONFLICT (slug) DO NOTHING;

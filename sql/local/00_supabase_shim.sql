@@ -8,33 +8,33 @@
 -- schema real rode num Postgres puro, sem alterar uma linha dele.
 -- ============================================================
 
-create extension if not exists pgcrypto;
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
-do $$ begin
-  create role anon;          exception when duplicate_object then null; end $$;
-do $$ begin
-  create role authenticated; exception when duplicate_object then null; end $$;
-do $$ begin
-  create role service_role;  exception when duplicate_object then null; end $$;
+DO $$ BEGIN
+  CREATE role anon;          EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  CREATE role authenticated; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  CREATE role service_role;  EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
-create schema if not exists extensions;
+CREATE SCHEMA IF NOT EXISTS extensions;
 
-create schema if not exists auth;
-create or replace function auth.role() returns text
-language sql stable
-as $$
-  select coalesce(current_setting('request.jwt.claim.role', true), 'service_role')
+CREATE SCHEMA IF NOT EXISTS auth;
+CREATE OR REPLACE FUNCTION auth.role() RETURNS TEXT
+LANGUAGE SQL STABLE
+AS $$
+  SELECT COALESCE(current_setting('request.jwt.claim.role', TRUE), 'service_role')
 $$;
 
-create schema if not exists storage;
-create table if not exists storage.buckets (
-  id     text primary key,
-  name   text not null,
-  public boolean not null default false
+CREATE SCHEMA IF NOT EXISTS storage;
+CREATE TABLE IF NOT EXISTS storage.buckets (
+  id     TEXT PRIMARY KEY,
+  name   TEXT NOT NULL,
+  public BOOLEAN NOT NULL DEFAULT FALSE
 );
-create table if not exists storage.objects (
-  id        uuid primary key default gen_random_uuid(),
-  bucket_id text references storage.buckets(id),
-  name      text
+CREATE TABLE IF NOT EXISTS storage.objects (
+  id        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  bucket_id TEXT REFERENCES storage.buckets(id),
+  name      TEXT
 );
-alter table storage.objects enable row level security;
+ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;

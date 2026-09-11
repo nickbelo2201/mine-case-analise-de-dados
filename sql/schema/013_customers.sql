@@ -10,106 +10,106 @@
 -- a ponte entre os dois é o número normalizado.
 -- ============================================================
 
-create or replace function normalize_phone(raw text)
-returns text
-language plpgsql
-immutable
-as $fn$
-declare
-  d text;
-begin
-  if raw is null then return null; end if;
-  d := regexp_replace(raw, '[^0-9]', '', 'g');
-  if d = '' then return null; end if;
+CREATE OR REPLACE FUNCTION normalize_phone(raw TEXT)
+RETURNS TEXT
+LANGUAGE plpgsql
+IMMUTABLE
+AS $fn$
+DECLARE
+  d TEXT;
+BEGIN
+  IF raw IS NULL THEN RETURN NULL; END IF;
+  d := REGEXP_REPLACE(raw, '[^0-9]', '', 'g');
+  IF d = '' THEN RETURN NULL; END IF;
 
   -- 10 ou 11 dígitos = número nacional sem DDI; assume Brasil.
-  if length(d) in (10, 11) then
+  IF LENGTH(d) IN (10, 11) THEN
     d := '55' || d;
-  end if;
+  END IF;
 
-  return d;
-end $fn$;
+  RETURN d;
+END $fn$;
 
-create table if not exists customers (
-  id            uuid primary key default gen_random_uuid(),
-  name          text not null,
-  whatsapp      text not null unique,   -- normalizado por normalize_phone
-  email         text,
-  cpf           text,
-  birthdate     date,
+CREATE TABLE IF NOT EXISTS customers (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name          TEXT NOT NULL,
+  whatsapp      TEXT NOT NULL UNIQUE,   -- normalizado por normalize_phone
+  email         TEXT,
+  cpf           TEXT,
+  birthdate     DATE,
   -- Manequim e preferências: tudo opcional, preenchido aos poucos.
   -- { "blusa": "M", "calca": "40", "gosta": "...", "evita": "..." }
-  measurements  jsonb not null default '{}',
-  tags          text[] not null default '{}',
-  notes         text,
-  accepts_marketing boolean not null default false,
-  source        text,                   -- 'site' | 'loja' | 'whatsapp' | 'importado'
-  anonymized_at timestamptz,            -- LGPD: anonimiza, nunca apaga
-  created_at    timestamptz not null default now(),
-  updated_at    timestamptz not null default now()
+  measurements  JSONB NOT NULL DEFAULT '{}',
+  tags          TEXT[] NOT NULL DEFAULT '{}',
+  notes         TEXT,
+  accepts_marketing BOOLEAN NOT NULL DEFAULT FALSE,
+  source        TEXT,                   -- 'site' | 'loja' | 'whatsapp' | 'importado'
+  anonymized_at TIMESTAMPTZ,            -- LGPD: anonimiza, nunca apaga
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- whatsapp já ganha índice pelo unique da coluna
-create index if not exists customers_name_idx      on customers(name);
-create index if not exists customers_birthdate_idx on customers(birthdate);
+CREATE INDEX IF NOT EXISTS customers_name_idx      ON customers(name);
+CREATE INDEX IF NOT EXISTS customers_birthdate_idx ON customers(birthdate);
 
-do $do$ begin
-  alter table orders
-    add constraint orders_customer_fk
-    foreign key (customer_id) references customers(id) on delete set null;
-exception when duplicate_object then null; end $do$;
+DO $do$ BEGIN
+  ALTER TABLE orders
+    ADD CONSTRAINT orders_customer_fk
+    FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object THEN NULL; END $do$;
 
-alter table customers enable row level security;
+ALTER TABLE customers ENABLE ROW LEVEL SECURITY;
 
-drop policy if exists "customers_service_only" on customers;
-create policy "customers_service_only"
-  on customers for all
-  using (auth.role() = 'service_role');
+DROP POLICY IF EXISTS "customers_service_only" ON customers;
+CREATE POLICY "customers_service_only"
+  ON customers FOR ALL
+  USING (auth.role() = 'service_role');
 
 -- ------------------------------------------------------------
 -- upsert_customer — usado pelo checkout e pelo PDV.
 -- Encontra pelo WhatsApp normalizado ou cria; nunca duplica.
 -- ------------------------------------------------------------
-create or replace function upsert_customer(
-  p_name     text,
-  p_whatsapp text,
-  p_source   text default 'site'
-) returns uuid
-language plpgsql
-security definer
-set search_path = public
-as $fn$
-declare
-  v_phone text := normalize_phone(p_whatsapp);
-  v_id    uuid;
-begin
-  if v_phone is null then return null; end if;
+CREATE OR REPLACE FUNCTION upsert_customer(
+  p_name     TEXT,
+  p_whatsapp TEXT,
+  p_source   TEXT DEFAULT 'site'
+) RETURNS UUID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $fn$
+DECLARE
+  v_phone TEXT := normalize_phone(p_whatsapp);
+  v_id    UUID;
+BEGIN
+  IF v_phone IS NULL THEN RETURN NULL; END IF;
 
-  insert into customers (name, whatsapp, source)
-  values (coalesce(nullif(trim(p_name), ''), 'Cliente ' || right(v_phone, 4)), v_phone, p_source)
-  on conflict (whatsapp) do update
-    set name       = case when customers.name like 'Cliente %'
-                            and nullif(trim(p_name), '') is not null
-                          then p_name else customers.name end,
-        updated_at = now()
-  returning id into v_id;
+  INSERT INTO customers (name, whatsapp, source)
+  VALUES (COALESCE(NULLIF(TRIM(p_name), ''), 'Cliente ' || RIGHT(v_phone, 4)), v_phone, p_source)
+  ON CONFLICT (whatsapp) DO UPDATE
+    SET name       = CASE WHEN customers.name LIKE 'Cliente %'
+                            AND NULLIF(TRIM(p_name), '') IS NOT NULL
+                          THEN p_name ELSE customers.name END,
+        updated_at = NOW()
+  RETURNING id INTO v_id;
 
-  return v_id;
-end $fn$;
+  RETURN v_id;
+END $fn$;
 
 -- ------------------------------------------------------------
 -- Visão consolidada: compras do site + do balcão na mesma ficha.
 -- ------------------------------------------------------------
-create or replace view customer_stats as
-select c.id                                            as customer_id,
-       count(o.id) filter (where o.status not in ('cancelado'))          as compras,
-       coalesce(sum(o.total_cents) filter (
-         where o.status in ('confirmado','pago','enviado','entregue')), 0)::int as total_gasto_cents,
-       max(o.created_at) filter (where o.status <> 'cancelado')          as ultima_compra
-  from customers c
-  left join orders o on o.customer_id = c.id
- group by c.id;
+CREATE OR REPLACE VIEW customer_stats AS
+SELECT c.id                                            AS customer_id,
+       COUNT(o.id) FILTER (WHERE o.status NOT IN ('cancelado'))          AS compras,
+       COALESCE(SUM(o.total_cents) FILTER (
+         WHERE o.status IN ('confirmado','pago','enviado','entregue')), 0)::INT AS total_gasto_cents,
+       MAX(o.created_at) FILTER (WHERE o.status <> 'cancelado')          AS ultima_compra
+  FROM customers c
+  LEFT JOIN orders o ON o.customer_id = c.id
+ GROUP BY c.id;
 
 -- Dado de cliente nunca é público.
-revoke all on customers      from anon, authenticated;
-revoke all on customer_stats from anon, authenticated;
+REVOKE ALL ON customers      FROM anon, authenticated;
+REVOKE ALL ON customer_stats FROM anon, authenticated;

@@ -10,149 +10,149 @@
 -- ------------------------------------------------------------
 -- orders
 -- ------------------------------------------------------------
-alter table orders alter column contact_id drop not null;
+ALTER TABLE orders ALTER COLUMN contact_id DROP NOT NULL;
 
-alter table orders add column if not exists channel         text not null default 'site';
-alter table orders add column if not exists customer_id     uuid;
-alter table orders add column if not exists subtotal_cents  int  not null default 0;
-alter table orders add column if not exists discount_cents  int  not null default 0;
-alter table orders add column if not exists shipping_cents  int  not null default 0;
-alter table orders add column if not exists total_cents     int  not null default 0;
-alter table orders add column if not exists payment_method  text;
-alter table orders add column if not exists payment_status  text not null default 'pendente';
-alter table orders add column if not exists tracking_code   text;
-alter table orders add column if not exists carrier         text;
-alter table orders add column if not exists customer_name   text;
-alter table orders add column if not exists customer_phone  text;
-alter table orders add column if not exists shipping_address jsonb;
-alter table orders add column if not exists reserved_until  timestamptz;
-alter table orders add column if not exists confirmed_at    timestamptz;
-alter table orders add column if not exists cancelled_at    timestamptz;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS channel         TEXT NOT NULL DEFAULT 'site';
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS customer_id     UUID;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS subtotal_cents  INT  NOT NULL DEFAULT 0;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS discount_cents  INT  NOT NULL DEFAULT 0;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS shipping_cents  INT  NOT NULL DEFAULT 0;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS total_cents     INT  NOT NULL DEFAULT 0;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_method  TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_status  TEXT NOT NULL DEFAULT 'pendente';
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_code   TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS carrier         TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS customer_name   TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS customer_phone  TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS shipping_address JSONB;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS reserved_until  TIMESTAMPTZ;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS confirmed_at    TIMESTAMPTZ;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancelled_at    TIMESTAMPTZ;
 
 -- Número legível para a dona e para a cliente ("pedido #1042").
-create sequence if not exists orders_number_seq start 1000;
-alter table orders add column if not exists order_number int;
-update orders set order_number = nextval('orders_number_seq') where order_number is null;
-alter table orders alter column order_number set default nextval('orders_number_seq');
-alter table orders alter column order_number set not null;
+CREATE SEQUENCE IF NOT EXISTS orders_number_seq START 1000;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS order_number INT;
+UPDATE orders SET order_number = NEXTVAL('orders_number_seq') WHERE order_number IS NULL;
+ALTER TABLE orders ALTER COLUMN order_number SET DEFAULT NEXTVAL('orders_number_seq');
+ALTER TABLE orders ALTER COLUMN order_number SET NOT NULL;
 
-do $do$ begin
-  create unique index orders_number_key on orders(order_number);
-exception when duplicate_table then null; end $do$;
+DO $do$ BEGIN
+  CREATE UNIQUE INDEX orders_number_key ON orders(order_number);
+EXCEPTION WHEN duplicate_table THEN NULL; END $do$;
 
 -- Status: o antigo tinha 4 valores; o novo cobre o ciclo real.
-update orders set status = case status
-  when 'pending'   then 'aguardando'
-  when 'confirmed' then 'confirmado'
-  when 'delivered' then 'entregue'
-  when 'cancelled' then 'cancelado'
-  else status
-end;
+UPDATE orders SET status = CASE status
+  WHEN 'pending'   THEN 'aguardando'
+  WHEN 'confirmed' THEN 'confirmado'
+  WHEN 'delivered' THEN 'entregue'
+  WHEN 'cancelled' THEN 'cancelado'
+  ELSE status
+END;
 
-alter table orders drop constraint if exists orders_status_check;
-alter table orders add constraint orders_status_check check (status in (
+ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_status_check;
+ALTER TABLE orders ADD CONSTRAINT orders_status_check CHECK (status IN (
   'aguardando', 'confirmado', 'pago', 'enviado', 'entregue', 'cancelado', 'devolvido'
 ));
-alter table orders alter column status set default 'aguardando';
+ALTER TABLE orders ALTER COLUMN status SET DEFAULT 'aguardando';
 
-do $do$ begin
-  alter table orders add constraint orders_channel_check
-    check (channel in ('site', 'loja', 'whatsapp'));
-exception when duplicate_object then null; end $do$;
+DO $do$ BEGIN
+  ALTER TABLE orders ADD CONSTRAINT orders_channel_check
+    CHECK (channel IN ('site', 'loja', 'whatsapp'));
+EXCEPTION WHEN duplicate_object THEN NULL; END $do$;
 
-do $do$ begin
-  alter table orders add constraint orders_payment_status_check
-    check (payment_status in ('pendente', 'pago', 'estornado'));
-exception when duplicate_object then null; end $do$;
+DO $do$ BEGIN
+  ALTER TABLE orders ADD CONSTRAINT orders_payment_status_check
+    CHECK (payment_status IN ('pendente', 'pago', 'estornado'));
+EXCEPTION WHEN duplicate_object THEN NULL; END $do$;
 
-create index if not exists orders_channel_idx     on orders(channel);
-create index if not exists orders_created_at_idx  on orders(created_at desc);
-create index if not exists orders_reserved_idx    on orders(reserved_until)
-  where status = 'aguardando';
+CREATE INDEX IF NOT EXISTS orders_channel_idx     ON orders(channel);
+CREATE INDEX IF NOT EXISTS orders_created_at_idx  ON orders(created_at DESC);
+CREATE INDEX IF NOT EXISTS orders_reserved_idx    ON orders(reserved_until)
+  WHERE status = 'aguardando';
 
 -- ------------------------------------------------------------
 -- order_items — o item congela o que foi vendido e a que custo.
 -- Mudar o preço do produto amanhã não pode alterar o pedido de hoje
 -- nem a margem histórica.
 -- ------------------------------------------------------------
-alter table order_items add column if not exists variant_id            uuid references product_variants(id) on delete restrict;
-alter table order_items add column if not exists unit_price_cents      int;
-alter table order_items add column if not exists cost_cents_snapshot   int not null default 0;
-alter table order_items add column if not exists product_name_snapshot text;
-alter table order_items add column if not exists size_snapshot         text;
-alter table order_items add column if not exists color_snapshot        text;
+ALTER TABLE order_items ADD COLUMN IF NOT EXISTS variant_id            UUID REFERENCES product_variants(id) ON DELETE RESTRICT;
+ALTER TABLE order_items ADD COLUMN IF NOT EXISTS unit_price_cents      INT;
+ALTER TABLE order_items ADD COLUMN IF NOT EXISTS cost_cents_snapshot   INT NOT NULL DEFAULT 0;
+ALTER TABLE order_items ADD COLUMN IF NOT EXISTS product_name_snapshot TEXT;
+ALTER TABLE order_items ADD COLUMN IF NOT EXISTS size_snapshot         TEXT;
+ALTER TABLE order_items ADD COLUMN IF NOT EXISTS color_snapshot        TEXT;
 
 -- Backfill do que já existia (a coluna antiga unit_price é numeric em reais).
-update order_items set unit_price_cents = round(unit_price * 100)::int
- where unit_price_cents is null;
-update order_items set size_snapshot = size where size_snapshot is null;
+UPDATE order_items SET unit_price_cents = ROUND(unit_price * 100)::INT
+ WHERE unit_price_cents IS NULL;
+UPDATE order_items SET size_snapshot = size WHERE size_snapshot IS NULL;
 
-create index if not exists order_items_variant_idx on order_items(variant_id);
+CREATE INDEX IF NOT EXISTS order_items_variant_idx ON order_items(variant_id);
 
 -- ------------------------------------------------------------
 -- order_events — histórico de status: quem mudou o quê e quando.
 -- ------------------------------------------------------------
-create table if not exists order_events (
-  id          uuid primary key default gen_random_uuid(),
-  order_id    uuid not null references orders(id) on delete cascade,
-  from_status text,
-  to_status   text not null,
-  note        text,
-  created_by  text not null default 'sistema',
-  created_at  timestamptz not null default now()
+CREATE TABLE IF NOT EXISTS order_events (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_id    UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+  from_status TEXT,
+  to_status   TEXT NOT NULL,
+  note        TEXT,
+  created_by  TEXT NOT NULL DEFAULT 'sistema',
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-create index if not exists order_events_order_idx on order_events(order_id, created_at desc);
+CREATE INDEX IF NOT EXISTS order_events_order_idx ON order_events(order_id, created_at DESC);
 
-alter table order_events enable row level security;
+ALTER TABLE order_events ENABLE ROW LEVEL SECURITY;
 
-drop policy if exists "order_events_service_only" on order_events;
-create policy "order_events_service_only"
-  on order_events for all
-  using (auth.role() = 'service_role');
+DROP POLICY IF EXISTS "order_events_service_only" ON order_events;
+CREATE POLICY "order_events_service_only"
+  ON order_events FOR ALL
+  USING (auth.role() = 'service_role');
 
 -- ------------------------------------------------------------
 -- release_expired_reservations — devolve ao estoque o que ficou
 -- reservado em pedido que ninguém confirmou. Roda por cron/job.
 -- ------------------------------------------------------------
-create or replace function release_expired_reservations()
-returns int
-language plpgsql
-security definer
-set search_path = public
-as $fn$
-declare
-  v_order record;
-  v_item  record;
-  v_count int := 0;
-begin
-  for v_order in
-    select id, status from orders
-     where status = 'aguardando'
-       and reserved_until is not null
-       and reserved_until < now()
-     for update skip locked
-  loop
-    for v_item in
-      select variant_id, quantity from order_items
-       where order_id = v_order.id and variant_id is not null
-    loop
-      perform release_stock(v_item.variant_id, v_item.quantity);
-    end loop;
+CREATE OR REPLACE FUNCTION release_expired_reservations()
+RETURNS INT
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $fn$
+DECLARE
+  v_order RECORD;
+  v_item  RECORD;
+  v_count INT := 0;
+BEGIN
+  FOR v_order IN
+    SELECT id, status FROM orders
+     WHERE status = 'aguardando'
+       AND reserved_until IS NOT NULL
+       AND reserved_until < NOW()
+     FOR UPDATE SKIP LOCKED
+  LOOP
+    FOR v_item IN
+      SELECT variant_id, quantity FROM order_items
+       WHERE order_id = v_order.id AND variant_id IS NOT NULL
+    LOOP
+      PERFORM release_stock(v_item.variant_id, v_item.quantity);
+    END LOOP;
 
-    update orders
-       set status = 'cancelado', cancelled_at = now()
-     where id = v_order.id;
+    UPDATE orders
+       SET status = 'cancelado', cancelled_at = NOW()
+     WHERE id = v_order.id;
 
-    insert into order_events (order_id, from_status, to_status, note, created_by)
-    values (v_order.id, 'aguardando', 'cancelado',
+    INSERT INTO order_events (order_id, from_status, to_status, note, created_by)
+    VALUES (v_order.id, 'aguardando', 'cancelado',
             'Cancelado automaticamente: reserva expirou', 'sistema');
 
     v_count := v_count + 1;
-  end loop;
+  END LOOP;
 
-  return v_count;
-end $fn$;
+  RETURN v_count;
+END $fn$;
 
 -- Pedidos já eram service-role-only na 001; o mesmo vale para os eventos.
-revoke all on order_events from anon, authenticated;
+REVOKE ALL ON order_events FROM anon, authenticated;

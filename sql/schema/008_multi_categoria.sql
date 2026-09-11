@@ -1,16 +1,16 @@
 -- Produtos podem pertencer a mais de uma categoria.
 -- `category` continua sendo a categoria principal (tipo de peça);
 -- `extra_categories` guarda slugs adicionais (ex.: luxo, casual, dia-a-dia).
-alter table products add column if not exists extra_categories text[] not null default '{}';
-create index if not exists products_extra_categories_idx on products using gin (extra_categories);
+ALTER TABLE products ADD COLUMN IF NOT EXISTS extra_categories TEXT[] NOT NULL DEFAULT '{}';
+CREATE INDEX IF NOT EXISTS products_extra_categories_idx ON products USING gin (extra_categories);
 
 -- Categorias de curadoria existem e têm página própria, mas ficam fora
 -- do menu do topo e da grade de categorias da home.
-alter table categories add column if not exists show_in_nav boolean not null default true;
+ALTER TABLE categories ADD COLUMN IF NOT EXISTS show_in_nav BOOLEAN NOT NULL DEFAULT TRUE;
 
-insert into categories (name, slug, parent_id, sort_order, active, show_in_nav)
-values
-  ('Dia a Dia', 'dia-a-dia', null, 100, true, false),
-  ('Casual',    'casual',    null, 101, true, false),
-  ('Luxo',      'luxo',      null, 102, true, false)
-on conflict (slug) do nothing;
+INSERT INTO categories (name, slug, parent_id, sort_order, active, show_in_nav)
+VALUES
+  ('Dia a Dia', 'dia-a-dia', NULL, 100, TRUE, FALSE),
+  ('Casual',    'casual',    NULL, 101, TRUE, FALSE),
+  ('Luxo',      'luxo',      NULL, 102, TRUE, FALSE)
+ON CONFLICT (slug) DO NOTHING;
